@@ -25,32 +25,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# In[2]:
-
-
-!pip install wandb transformers datasets
-!wandb login aee0ebe6843a7b138378e5ace3fdad105494724f
-
-!test -e GermEval21_Toxic_Train.csv || wget -O GermEval21_Toxic_Train.csv https://raw.githubusercontent.com/cgawron/GermEval_2021/main/GermEval21_Toxic_Train.csv?token=AADCWPFIZXF6EM2QWVRICL3AUQHAE
-
-
-# In[3]:
-
-
-%env CUDA_VISIBLE_DEVICES=0
-
-# In[4]:
-
-
-%env WANDB_PROJECT=GermEval_2021
-
-# In[5]:
-
-
-%env WANDB_LOG_MODEL=true
-
-# In[6]:
-
 
 """ Finetuning the library models for sequence classification on GermEval2021."""
 
@@ -80,12 +54,13 @@ from transformers import (
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
+import torch.optim as optim
+import poptorch
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.5.0")
 
-# In[7]:
 
 
 logger = logging.getLogger(__name__)
@@ -354,6 +329,11 @@ def main(config):
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+    model.bert.embeddings.position_embeddings = poptorch.BeginBlock(
+        layer_to_call=model.bert.embeddings.position_embeddings, ipu_id=1)
+
+    model_opts = poptorch.Options().deviceIterations(50)
+    model = poptorch.trainingModel(model, model_opts, optimizer=optim.SGD(model.parameters(), lr=1e-5))
 
     # Preprocessing the datasets
     if data_args.task_name is not None:
@@ -562,10 +542,6 @@ def main(config):
                             item = label_list[item]
                             writer.write(f"{index}\t{item}\n")
 
-    return model
-
-# In[10]:
-
 
 import re
 import datasets
@@ -585,50 +561,16 @@ for id, target in enumerate(COLUMNS):
 GERMEVAL2021 = GERMEVAL2021_RAW.train_test_split(train_size=0.8)
 GERMEVAL2021['validation'] = GERMEVAL2021['test']
 
-# ## Add 'toxic' trainig data from GermEval2018 and GermEval2019
 
 # In[11]:
 
 
-toxic = [ datasets.Dataset.from_csv(file).remove_columns('Unnamed: 0') for file in ['GermEval2018_training.csv', 'GermEval2019_training.csv', 'GermEval2018_test.csv', 'GermEval2019_test.csv']]
-
-def _map(x, y):
-    return { 'comment_text': x, 'Sub1_Toxic': y}
-
-toxic.append(GERMEVAL2021['train'].map(function=_map, input_columns=['comment_text', 'Sub1_Toxic']))
-
-toxic_train = datasets.concatenate_datasets(toxic)
-
-# In[12]:
-
-
-features = toxic_train.features.copy()
-features['Sub1_Toxic'] = datasets.ClassLabel(names=['Other', 'Toxic'], id=id)
-toxic_train = toxic_train.cast(features)
-
-# In[13]:
-
-
-GERMEVAL2021
-
-# In[14]:
-
-
-GERMEVAL2021['test'].features, toxic_train.features
-
-# In[11]:
-
-
-model_name = "german-nlp-group/electra-base-german-uncased"
-#model_name = "deepset/gbert-large"
+#model_name = "german-nlp-group/electra-base-german-uncased"
+model_name = "deepset/gbert-large"
 lr = 1.3e-5
 
-model = {}
-
-#for target in COLUMNS:
-for target in ['Sub1_Toxic']:
+for target in COLUMNS:
     germeval2021 = GERMEVAL2021
-    #germeval2021['train'] = toxic_train
     germeval2021 = germeval2021.rename_column(target, 'label')
     print(germeval2021["train"])
 
@@ -641,46 +583,11 @@ for target in ['Sub1_Toxic']:
         "eval_steps": 100,
         #"max_seq_length": 255,
         "learning_rate": lr,
-        "fp16": True,
         "num_train_epochs": 5,
-        #"max_steps": 1510,
         "overwrite_output": True,
         "output_dir": f"out_{target}_{model_name}_nur_21",
         "run_name": f"run_{target}_{lr}_{model_name}"
-        #"resume_from_checkpoint": 1500
     }
 
-    model[target] = main(config)
+    main(config)
     wandb.finish()
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-
-
-
-# In[ ]:
-
-
-(p_off, r_off, f_off, p_oth, r_oth, f_oth) = (0.808057, 0.567388, 0.666667, 0.806548, 0.930472, 0.864089)
-
-# In[ ]:
-
-
-p_macro = 0.5 * (p_off + p_oth)
-r_macro = 0.5 * (r_off + r_oth)
-f_macro = 2 * p_macro * r_macro / (p_macro + r_macro)
-
-# In[ ]:
-
-
-f_macro
-
-# In[ ]:
-
-
-
