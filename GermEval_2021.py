@@ -39,6 +39,7 @@ import numpy as np
 from datasets import load_dataset, load_metric
 
 import transformers
+from trainer import Trainer
 from transformers import (
     AutoConfig,
     AutoModelForSequenceClassification,
@@ -47,8 +48,8 @@ from transformers import (
     EvalPrediction,
     HfArgumentParser,
     PretrainedConfig,
-    Trainer,
     TrainingArguments,
+#    Trainer,
     default_data_collator,
     set_seed,
 )
@@ -56,6 +57,7 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 import torch.optim as optim
 import poptorch
+import torch
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -190,6 +192,25 @@ class ModelArguments:
 # In[ ]:
 
 
+class WrappedModel(torch.nn.Module):
+    def __init__(self, model_name):
+        super().__init__()
+        self.wrapped = AutoModelForSequenceClassification.from_pretrained(model_name)
+
+    def forward(self, input_ids=None, attention_mask=None, token_type_ids=None, position_ids=None, head_mask=None, 
+                inputs_embeds=None, labels=None, output_attentions=None, output_hidden_states=None, return_dict=None):
+        return self.wrapped.forward(input_ids, attention_mask, token_type_ids, position_ids, head_mask, 
+                                    inputs_embeds, labels, output_attentions, output_hidden_states, return_dict=False)
+
+    def __getattr__(self, attr):
+        try:
+            return torch.nn.Module.__getattr__(self, attr)
+        except torch.nn.modules.module.ModuleAttributeError:
+            return getattr(self.wrapped, attr)
+
+
+#model = WrappedModel()
+
 
 
 # ## Passing configuration
@@ -321,19 +342,24 @@ def main(config):
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    model = AutoModelForSequenceClassification.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in model_args.model_name_or_path),
-        config=config,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
-    model.bert.embeddings.position_embeddings = poptorch.BeginBlock(
-        layer_to_call=model.bert.embeddings.position_embeddings, ipu_id=1)
 
-    model_opts = poptorch.Options().deviceIterations(50)
-    model = poptorch.trainingModel(model, model_opts, optimizer=optim.SGD(model.parameters(), lr=1e-5))
+    model = WrappedModel(model_args.model_name_or_path)
+    model.wrapped.bert.embeddings.position_embeddings = poptorch.BeginBlock(
+        model.wrapped.bert.embeddings.position_embeddings, ipu_id=1)
+    opts = poptorch.Options().deviceIterations(10)
+    ipu_model = poptorch.inferenceModel(model, opts)
+
+    #model = AutoModelForSequenceClassification.from_pretrained(
+    #    model_args.model_name_or_path,
+    #    from_tf=bool(".ckpt" in model_args.model_name_or_path),
+    #    config=config,
+    #    cache_dir=model_args.cache_dir,
+    #    revision=model_args.model_revision,
+    #    use_auth_token=True if model_args.use_auth_token else None,
+    #)
+    
+    #model_opts = poptorch.Options().deviceIterations(50)
+    #ipu_model = poptorch.trainingModel(model)
 
     # Preprocessing the datasets
     if data_args.task_name is not None:
@@ -463,9 +489,11 @@ def main(config):
     else:
         data_collator = None
 
+    
     # Initialize our Trainer
     trainer = Trainer(
-        model=model,
+        model=ipu_model,
+        optimizers=(poptorch.optim.SGD(ipu_model.parameters(), lr=training_args.learning_rate), None),
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
@@ -477,8 +505,8 @@ def main(config):
     # Training
     if training_args.do_train:
         checkpoint = None
-        if last_checkpoint is not None:
-            checkpoint = last_checkpoint
+        #if last_checkpoint is not None:
+        #    checkpoint = last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         metrics = train_result.metrics
         max_train_samples = (
