@@ -1,0 +1,91 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[hyperref]{acl2020}
+\usepackage{times}
+\usepackage{latexsym}
+\renewcommand{\UrlFont}{\ttfamily\small}
+\usepackage{microtype}
+\usepackage{graphicx}
+
+\aclfinalcopy % Uncomment this line for the final submission
+%\def\aclpaperid{***} %  Enter the acl Paper ID here
+
+%\setlength\titlebox{5cm}
+% You can expand the titlebox if you need extra space
+% to show all the authors. Please do not make the titlebox
+% smaller than 5cm (the original size); we will check this
+% in the camera-ready version and ask you to change it back.
+
+\title{Using Transformer-Based Language Models to Identify Toxic, Engaging, \& Fact-Claiming Comments -- FH-SWF\_SG}
+
+\author{Christian Gawron \\
+  Fachhochschule Südwestfalen \\
+  Frauenstuhlweg 31 \\
+  58644 Iserlohn \\
+  \texttt{gawron.christian@fh-swf.de} \\\And
+  Sebastian Schmidt \\
+  Fachhochschule Südwestfalen \\
+  Frauenstuhlweg 31 \\
+  58644 Iserlohn \\
+  \texttt{schmidt.sebastian2@fh-swf.de} \\}
+
+\date{}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+    In this paper we describe the methods we used for our submissions to the 
+    GermEval-2021 shared task on the identification of toxic, engaging, and fact-claiming comments.
+    For all three subtask we fine-tuned freely available transformer-based models from Huggingface model hub.
+    
+\end{abstract}
+
+
+
+\section{Introduction}
+
+Transformer-based language models like BERT \cite{BERT}, ELECTRA \cite{ELECTRA}, and GPT-2 \cite{GPT2} have been 
+shown to achieve state-of-the-art results on various NLP tasks. 
+Probably the most important feature of these models is that they allow transfer learning: After an unsupervised \emph{pre-training}, the resulting models can be 
+\emph{fine-tuned} for various NLP tasks like token classification (e.\,g. NER) and sequence classification.
+Huggingface provides implementations for these models with their transformers library, and a model hub with pre-trained models for various languages \cite{huggingface}. 
+
+Many groups are using the transformers library, and due to a large number of contributers the model hub is growing fast. Currently, there are about 
+2,900 pre-trained models for English and more than 200 pre-trained models for German.
+For example, Deepset has published a German ELECTRA model achieving an F1-score (macro average) of 80.70\% on GermEval 2018 Coarse and 
+an F1-score (micro average) of 88.95\% on GermEval 2014 \cite{GNLM}.
+
+
+
+\section{Results}
+
+\begin{figure}[h]
+  \includegraphics[width=\linewidth]{images/F1_Sub1.png}
+  \label{plot:F1_Sub1}
+  \caption{F1 scores for some models we evaluated on subtask 1 with a training / test split of 0.8.}
+\end{figure}
+
+\begin{table*}[t]
+  \begin{tabular}{lrrrrrrrrr}
+    & \multicolumn{3}{c}{Sub1\_Toxic} & \multicolumn{3}{c}{Sub2\_Engaging} & \multicolumn{3}{c}{Sub3\_FactClaiming} \\ 
+    Submission & \multicolumn{1}{c}{F1} & \multicolumn{1}{c}{Prec.} & \multicolumn{1}{c}{Rec.} & 
+                 \multicolumn{1}{c}{F1} & \multicolumn{1}{c}{Prec.} & \multicolumn{1}{c}{Rec.} & 
+                 \multicolumn{1}{c}{F1} & \multicolumn{1}{c}{Prec.} & \multicolumn{1}{c}{Rec.} \\
+    \hline
+    deepset/gelectra-large & 0,707 & 0,743 & 0,675 & 0,697 & 0,694 & 0,700 & 0,734 & 0,728 & 0,740 \\
+    benjamin/gerpt2-large & 0,658 & 0,678 & 0,640 & 0,690 & 0,684 & 0,696 & 0,736 & 0,736 & 0,735
+  \end{tabular}
+  \label{tab:results}
+  \caption{Results of our submissions based on the models deepset/gelectra-large and benjamin/gerpt2-large.}
+\end{table*}
+
+\section{Using additional training data}
+
+\section*{Acknowledgments}
+This research was supported by grants from NVIDIA and utilized NVIDIA CUDA on Tesla \& Ampere GPUs.
+This research also used free computing resources provided by the GraphCore Academic Program and Google Colab.
+
+
+\bibliography{nlp}
+\bibliographystyle{acl_natbib}
+
+\end{document}
